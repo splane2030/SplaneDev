@@ -1,0 +1,38 @@
+[Setup]
+AppName=My Money
+AppVersion=1.0
+AppPublisher=TonNomOuEntreprise
+AppPublisherURL=https://exemple.com
+AppSupportURL=https://exemple.com/support
+AppUpdatesURL=https://exemple.com/update
+
+DefaultDirName={pf}\My Money
+DefaultGroupName=My Money
+DisableProgramGroupPage=no
+
+OutputDir=installeur
+OutputBaseFilename=MyMoneySetup_v1.0
+
+Compression=lzma
+SolidCompression=yes
+
+[Files]
+; Copie du fichier principal de l’application
+Source: "dist\MyMoney.exe"; DestDir: "{app}"; Flags: ignoreversion
+; Si tu as d'autres fichiers (BD, images, DLL, etc.)
+Source: "dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+; Raccourci vers l’application
+Name: "{group}\My Money"; Filename: "{app}\MyMoney.exe"
+; Raccourci de désinstallation
+Name: "{group}\Désinstaller My Money"; Filename: "{uninstallexe}"
+; Raccourci sur le bureau
+Name: "{userdesktop}\My Money"; Filename: "{app}\MyMoney.exe"; Tasks: desktopicon
+
+[Tasks]
+Name: "desktopicon"; Description: "Créer un raccourci sur le Bureau"; GroupDescription: "Icônes supplémentaires :"
+
+[Run]
+; Lancer l'application à la fin de l'installation (optionnel)
+Filename: "{app}\MyMoney.exe"; Description: "Lancer My Money"; Flags: nowait postinstall skipifsilent
