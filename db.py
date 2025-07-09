@@ -1531,6 +1531,52 @@ def optimiser_base() -> bool:
         logger.error("Erreur optimisation DB: %s", str(e))
         return False
 
+def check_database_integrity():
+    """Vérifie l'intégrité structurelle de la base de données"""
+    required_tables = {
+        'agent', 'abonne', 'depots', 'retraits', 'journal',
+        'type_compte', 'abonne_compte', 'transaction'
+    }
+    
+    db_path = DBConfig.get_db_path()
+    
+    # Vérification basique du fichier
+    if not os.path.exists(db_path):
+        logger.error("Le fichier de base de données n'existe pas")
+        return False
+    
+    try:
+        # Test de connexion basique
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Vérification des tables
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            existing_tables = {row[0] for row in cursor.fetchall()}
+            
+            # Vérification des tables manquantes
+            missing_tables = required_tables - existing_tables
+            if missing_tables:
+                logger.error(f"Tables manquantes: {missing_tables}")
+                return False
+                
+            # Vérification rapide du contenu de chaque table
+            for table in required_tables:
+                try:
+                    cursor.execute(f"SELECT 1 FROM {table} LIMIT 1")
+                except sqlite3.Error as e:
+                    logger.error(f"Erreur accès table {table}: {e}")
+                    return False
+                    
+            return True
+            
+    except sqlite3.DatabaseError as e:
+        logger.error(f"Base de données corrompue: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Erreur vérification intégrité: {e}")
+        return False
+    
 # ==== POINT D'ENTRÉE ====
 if __name__ == "__main__":
     print("=== INITIALISATION DE L'APPLICATION ===")

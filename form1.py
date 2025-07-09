@@ -20,6 +20,13 @@ import win32api
 import win32security
 import ntsecuritycon
 
+# Juste après les imports
+db_path = os.path.join(db.DBConfig.get_app_dir(), 'money_epargne.db')
+print(f"Chemin complet de la DB: {db_path}")
+print(f"Existe: {os.path.exists(db_path)}")
+print(f"Lisible: {os.access(db_path, os.R_OK)}")
+print(f"Modifiable: {os.access(db_path, os.W_OK)}")
+
 # ==================== CONFIGURATION DES PERMISSIONS ====================
 def setup_permissions():
     """Configure les permissions système nécessaires"""
