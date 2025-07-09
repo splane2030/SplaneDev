@@ -17,6 +17,7 @@ import stat
 import tempfile
 import logging
 
+
 # ==================== CONFIGURATION DES PERMISSIONS ====================
 def setup_permissions():
     """Configure les permissions système nécessaires"""
