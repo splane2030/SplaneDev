@@ -16,6 +16,8 @@ import webbrowser
 import stat
 import tempfile
 import logging
+import win32api
+import win32
 
 
 # ==================== CONFIGURATION DES PERMISSIONS ====================

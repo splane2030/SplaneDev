@@ -36,8 +36,8 @@ import logging
 
 # Import des modules de la base de données
 from db import (
-    connexion_db, initialiser_base, ajouter_journal, generer_numero_client_unique,
-    generer_numero_carte_unique, initialiser_pages_compte_fixe, hash_password, get_db_path
+    connexion_db, initialiser_base, ajouter_journal,generate_unique_id,
+    generer_numero_carte_unique, initialiser_pages_compte_fixe, hash_password, resource_path
 )
 
 # Configuration du logging
@@ -356,7 +356,7 @@ class InscriptionInterface:
     
         # Variables pour les champs
         self.data = {
-            "numero_client": tk.StringVar(value=generer_numero_client_unique()),
+            "numero_client": tk.StringVar(value=generate_unique_id()),
             "numero_carte": tk.StringVar(value=generer_numero_carte_unique()),
             "nom": tk.StringVar(),
             "postnom": tk.StringVar(),
