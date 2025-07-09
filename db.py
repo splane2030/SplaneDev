@@ -105,6 +105,14 @@ class DBConfig:
         
         return local_db
 
+    @classmethod
+    def set_file_permissions(cls, filepath: str):
+        """Définit les permissions appropriées pour un fichier"""
+        try:
+            os.chmod(filepath, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH)
+        except Exception as e:
+            logger.warning(f"Impossible de définir les permissions pour {filepath}: {e}")
+
 # ==== LOGGING ====
 def setup_logging():
     """Configure le système de logging de manière autonome"""
@@ -527,7 +535,6 @@ def create_empty_db(db_path: str):
                 identifiant TEXT UNIQUE NOT NULL,
                 mot_de_passe TEXT NOT NULL,
                 salt TEXT NOT NULL,
-                salt TEXT NOT NULL,
                 role TEXT DEFAULT 'agent',
                 date_creation TEXT,
                 actif INTEGER DEFAULT 1,
@@ -673,6 +680,23 @@ def copy_db_from_resources():
     except Exception as e:
         logger.error("Erreur copie DB: %s", str(e), exc_info=True)
         raise
+
+def cleanup_lock_files():
+    """Nettoie les fichiers de verrouillage SQLite qui pourraient rester"""
+    db_path = DBConfig.get_db_path()
+    lock_files = [
+        f"{db_path}-wal",
+        f"{db_path}-shm",
+        f"{db_path}-journal"
+    ]
+    
+    for lf in lock_files:
+        try:
+            if os.path.exists(lf):
+                os.remove(lf)
+                logger.info(f"Fichier de verrouillage supprimé: {lf}")
+        except Exception as e:
+            logger.warning(f"Impossible de supprimer le fichier de verrouillage {lf}: {e}")
 
 # ==== FONCTIONS MÉTIER ====
 def creer_abonne(data: Dict) -> Tuple[bool, str]:
@@ -1476,6 +1500,7 @@ if __name__ == "__main__":
         
         # Initialisation de la base
         print("\n⚙️ Initialisation de la base...")
+        initialiser_base()
         copy_db_from_resources()
         
         # Test de connexion
