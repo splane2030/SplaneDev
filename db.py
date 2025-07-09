@@ -558,8 +558,37 @@ def create_empty_db(db_path: str):
                 FOREIGN KEY (abonne_id) REFERENCES abonne(id) ON DELETE CASCADE,
                 FOREIGN KEY (type_compte_id) REFERENCES type_compte(id)
             );
+            
+            CREATE TABLE IF NOT EXISTS parametres (
+                cle TEXT PRIMARY KEY,
+             valeur TEXT,
+             description TEXT,
+                modifiable INTEGER DEFAULT 1
+            );
+        
+            CREATE TABLE IF NOT EXISTS compte_fixe_cases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                numero_client TEXT NOT NULL,
+                numero_carte TEXT NOT NULL,
+                ref_depot TEXT NOT NULL,
+                date_remplissage TEXT NOT NULL,
+                montant REAL NOT NULL,
+                FOREIGN KEY (numero_client) REFERENCES abonne(numero_client)
+            );
+            
+            CREATE TABLE IF NOT EXISTS historique_modifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_modifiee TEXT NOT NULL,
+                id_ligne INTEGER NOT NULL,
+                ancienne_valeur TEXT,
+                nouvelle_valeur TEXT,
+                date_modification TEXT NOT NULL,
+                auteur TEXT NOT NULL
+            );
+            
 
             -- Table spécifique aux comptes bloqués
+            
             CREATE TABLE IF NOT EXISTS compte_bloque (
                 abonne_id INTEGER PRIMARY KEY,
                 duree_mois INTEGER NOT NULL CHECK(duree_mois > 0),
@@ -1410,6 +1439,20 @@ def get_all_logs() -> List[Dict]:
         print(f"Erreur récupération logs: {e}")
         return []
 
+def check_database_integrity():
+    required_tables = {'agent', 'abonne', 'depots', 'retraits', 'compte_fixe', 'compte_page_fixe' , 'transaction', 'compte_bloque', 'abonne_compte' 'journal' , 'type_compte', 'suppleant'}  # Ajoutez toutes vos tables essentielles
+    
+    try:
+        with sqlite3.connect(DBConfig.get_db_path()) as conn:
+            existing_tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            return required_tables.issubset(existing_tables)
+    except sqlite3.DatabaseError:
+        return False
+
+if not check_database_integrity():
+    print("Base de données invalide détectée, veuillez exécuter reset_db.py")
+    sys.exit(1)
+    
 # ==================== FONCTIONS POUR LES DEPOTS ====================
 
 def get_client_by_card(numero_carte: str) -> Optional[Dict]:

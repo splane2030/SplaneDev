@@ -17,29 +17,19 @@ import stat
 import tempfile
 import logging
 import win32api
-import win32
-
+import win32security
+import ntsecuritycon
 
 # ==================== CONFIGURATION DES PERMISSIONS ====================
 def setup_permissions():
     """Configure les permissions système nécessaires"""
     try:
         # Créer le dossier d'application avec permissions étendues
-        appdata_dir = os.getenv("APPDATA")
-        app_folder = os.path.join(appdata_dir, "MonLogiciel")
-        
-        # Créer le dossier avec permissions 0o777 (rwx pour tous)
-        os.makedirs(app_folder, exist_ok=True, mode=0o777)
-        os.chmod(app_folder, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+        app_folder = db.DBConfig.get_app_dir()
         
         # Vérifier les permissions
         if not os.access(app_folder, os.R_OK | os.W_OK | os.X_OK):
             raise PermissionError(f"Permissions insuffisantes sur {app_folder}")
-        
-        # Configurer les permissions pour les fichiers de log
-        log_path = os.path.join(app_folder, 'app.log')
-        if os.path.exists(log_path):
-            os.chmod(log_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH)
         
         return True
     except Exception as e:
@@ -47,15 +37,8 @@ def setup_permissions():
         return False
 
 # ==================== JOURNALISATION AU DÉMARRAGE ====================
-# Configurer les permissions avant toute opération
-if not setup_permissions():
-    messagebox.showerror("Erreur Critique", 
-                        "L'application n'a pas les permissions nécessaires pour fonctionner.\n"
-                        "Veuillez exécuter en tant qu'administrateur ou vérifier les permissions des dossiers.")
-    sys.exit(1)
-
-# Maintenant, configurer le logging dans le dossier APPDATA
-log_dir = os.path.join(os.environ['APPDATA'], 'MonLogiciel')
+# Configurer le logging en utilisant le chemin de la DBConfig
+log_dir = db.DBConfig.get_app_dir()
 log_path = os.path.join(log_dir, 'app.log')
 
 try:
@@ -268,13 +251,13 @@ class LoginWindow(tk.Toplevel):
             return
             
         # Vérification des identifiants
-        success, agent = db.verifier_mot_de_passe(username, password)
+        agent = db.authentifier_agent(username, password)
         
-        if success:
+        if agent:
             self.parent.current_agent = agent
             self.parent.update_interface()
             self.destroy()
-            db.ajouter_journal("Connexion", agent['nom_agent'])
+            db.ajouter_journal("Connexion", agent['nom'])
         else:
             messagebox.showerror("Échec de connexion", 
                                "Identifiant ou mot de passe incorrect", 
@@ -611,7 +594,7 @@ class Application(tk.Tk):
                 cur = conn.cursor()
                 cur.execute("SELECT COUNT(*) FROM agent")
                 if cur.fetchone()[0] == 0:
-                    db.ajouter_agent(
+                    db.creer_compte_agent(
                         nom="Administrateur",
                         identifiant="admin",
                         mot_de_passe="admin123",
@@ -765,7 +748,7 @@ class Application(tk.Tk):
         """Met à jour l'interface après connexion"""
         if hasattr(self, 'current_agent'):
             self.user_label.config(
-                text=f"Connecté en tant que: {self.current_agent['nom_agent']} ({self.current_agent['role']})"
+                text=f"Connecté en tant que: {self.current_agent['nom']} ({self.current_agent['role']})"
             )
             self.update_menu_state(True)
             self.update_stats()
@@ -817,7 +800,7 @@ class Application(tk.Tk):
                 total_retraits = cur.fetchone()[0] or 0
                 
                 # Solde total
-                cur.execute("SELECT SUM(solde) FROM abonne")
+                cur.execute("SELECT SUM(solde) FROM abonne_compte")
                 solde_total = cur.fetchone()[0] or 0
                 
                 # Création des cartes de stats
@@ -878,8 +861,8 @@ class Application(tk.Tk):
             messagebox.showwarning("Non connecté", "Veuillez vous connecter d'abord")
             return
             
-        interface_retrait(self.current_agent['nom_agent'])
-        db.ajouter_journal("Ouverture interface", self.current_agent['nom_agent'], "Retrait")
+        interface_retrait(self.current_agent['nom'])
+        db.ajouter_journal("Ouverture interface", self.current_agent['nom'], "Retrait")
     
     def refresh_on_focus(self, event):
         """Rafraîchit l'interface quand la fenêtre reprend le focus"""
@@ -902,7 +885,7 @@ class Application(tk.Tk):
         InscriptionInterface(inscription_window)
         
         # Ajouter une entrée dans le journal
-        db.ajouter_journal("Ouverture interface", self.current_agent['nom_agent'], "Inscription")
+        db.ajouter_journal("Ouverture interface", self.current_agent['nom'], "Inscription")
         
         # Rafraîchir après fermeture
         inscription_window.protocol("WM_DELETE_WINDOW", lambda: [
@@ -917,8 +900,8 @@ class Application(tk.Tk):
             return
             
         # Ouvrir la fenêtre de dépôt avec callback de rafraîchissement
-        depot_window = FenetreDepot(self, self.current_agent['nom_agent'])
-        db.ajouter_journal("Ouverture interface", self.current_agent['nom_agent'], "Dépôt")
+        depot_window = FenetreDepot(self, self.current_agent['nom'])
+        db.ajouter_journal("Ouverture interface", self.current_agent['nom'], "Dépôt")
         
         # Rafraîchir après fermeture
         depot_window.protocol("WM_DELETE_WINDOW", lambda: [
@@ -926,8 +909,8 @@ class Application(tk.Tk):
             self.refresh_interface()
         ])
     
-    # form1.py (ligne ~845)
     def open_retrait(self):
+        """Ouvre l'interface de retrait"""
         if not hasattr(self, 'current_agent'):
             messagebox.showwarning("Non connecté", "Veuillez vous connecter d'abord")
             return
@@ -937,13 +920,13 @@ class Application(tk.Tk):
         retrait_window.title("Interface de Retrait")
     
         # Ouvrir l'interface de retrait - PASSER LA FENÊTRE EN PARAMÈTRE
-        interface_retrait(self.current_agent['nom_agent'], retrait_window)
+        interface_retrait(self.current_agent['nom'], retrait_window)
     
         # Rafraîchir après fermeture
         retrait_window.protocol("WM_DELETE_WINDOW", lambda: [
-        retrait_window.destroy(),
-        self.refresh_interface()
-    ])
+            retrait_window.destroy(),
+            self.refresh_interface()
+        ])
     
     def refresh_interface(self):
         """Rafraîchit l'interface après chaque opération"""
@@ -962,7 +945,7 @@ class Application(tk.Tk):
             return
             
         agents_window = ManageAgentsWindow(self)
-        db.ajouter_journal("Ouverture interface", self.current_agent['nom_agent'], "Gestion agents")
+        db.ajouter_journal("Ouverture interface", self.current_agent['nom'], "Gestion agents")
         
         # Rafraîchir après fermeture
         agents_window.protocol("WM_DELETE_WINDOW", lambda: [
@@ -977,7 +960,7 @@ class Application(tk.Tk):
             return
             
         settings_window = SettingsWindow(self)
-        db.ajouter_journal("Ouverture interface", self.current_agent['nom_agent'], "Paramètres")
+        db.ajouter_journal("Ouverture interface", self.current_agent['nom'], "Paramètres")
         
         # Rafraîchir après fermeture
         settings_window.protocol("WM_DELETE_WINDOW", lambda: [
@@ -1019,7 +1002,6 @@ class Application(tk.Tk):
         ttk.Button(about_window, 
                   text="Fermer", 
                   command=about_window.destroy).pack(pady=20)
-
 
 # ==================== FENÊTRES SECONDAIRES ====================
 class ManageAgentsWindow(tk.Toplevel):
@@ -1206,7 +1188,7 @@ class ManageAgentsWindow(tk.Toplevel):
                 return
         
         try:
-            success = db.ajouter_agent(nom, identifiant, mdp, role, photo_blob)
+            success = db.creer_compte_agent(nom, identifiant, mdp, role, photo_blob)
             if success:
                 messagebox.showinfo("Succès", "Agent ajouté avec succès")
                 self.clear_form()
@@ -1224,15 +1206,19 @@ class ManageAgentsWindow(tk.Toplevel):
             self.agents_tree.delete(item)
             
         try:
-            agents = db.get_all_users()
-            for agent in agents:
-                self.agents_tree.insert("", "end", 
-                                      values=(agent['id'],
-                                             agent['nom_agent'],
-                                             agent['identifiant'],
-                                             agent['role'],
-                                             agent['date_creation'],
-                                             "Oui" if agent['actif'] else "Non"))
+            with db.connexion_db() as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("SELECT id, nom_agent, identifiant, role, date_creation, actif FROM agent")
+                
+                for row in cur.fetchall():
+                    self.agents_tree.insert("", "end", 
+                                          values=(row['id'],
+                                                 row['nom_agent'],
+                                                 row['identifiant'],
+                                                 row['role'],
+                                                 row['date_creation'],
+                                                 "Oui" if row['actif'] else "Non"))
         except Exception as e:
             messagebox.showerror("Erreur", f"Impossible de charger les agents: {e}")
     
@@ -1357,8 +1343,24 @@ class SettingsWindow(tk.Toplevel):
         try:
             with db.connexion_db() as conn:
                 cur = conn.cursor()
-                cur.execute("SELECT cle, valeur FROM parametres")
+                # Créer la table si elle n'existe pas
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS parametres (
+                        cle TEXT PRIMARY KEY,
+                        valeur TEXT
+                    )
+                """)
                 
+                # Insérer les valeurs par défaut si la table est vide
+                cur.execute("SELECT COUNT(*) FROM parametres")
+                if cur.fetchone()[0] == 0:
+                    cur.execute("INSERT INTO parametres VALUES ('taux_interet', '5.0')")
+                    cur.execute("INSERT INTO parametres VALUES ('depot_min', '500')")
+                    cur.execute("INSERT INTO parametres VALUES ('retrait_min', '1000')")
+                    conn.commit()
+                
+                # Charger les paramètres
+                cur.execute("SELECT cle, valeur FROM parametres")
                 for row in cur.fetchall():
                     self.settings[row[0]] = row[1]
                 
@@ -1383,6 +1385,8 @@ class SettingsWindow(tk.Toplevel):
                 
                 for key, value in new_settings.items():
                     cur.execute("UPDATE parametres SET valeur = ? WHERE cle = ?", (value, key))
+                    if cur.rowcount == 0:
+                        cur.execute("INSERT INTO parametres VALUES (?, ?)", (key, value))
                 
                 conn.commit()
                 messagebox.showinfo("Succès", "Paramètres enregistrés avec succès")
